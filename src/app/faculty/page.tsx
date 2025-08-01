@@ -85,7 +85,7 @@ export default function FacultyDashboard() {
       date,
       type,
       image,
-      status: 'Pending',
+      status: 'pending',
       createdAt: Timestamp.now(),
     });
 
