@@ -14,22 +14,29 @@ import { useRouter } from 'next/navigation';
 
 interface Achievement {
   id: string;
+  name?: string; // 🔧 Added (optional if you want to display later)
   title: string;
   type: string;
   date: string;
   status: string;
   image: string;
   email: string;
+  description?: string;
   createdAt: Timestamp;
 }
 
 export default function FacultyDashboard() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
+
+  // 🔧 Added: New name field
+  const [name, setName] = useState('');
+
   const [title, setTitle] = useState('');
   const [type, setType] = useState('Workshop');
   const [date, setDate] = useState('');
   const [image, setImage] = useState('');
+  const [description, setDescription] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [activeTab, setActiveTab] = useState<'submit' | 'submissions'>('submit');
@@ -74,25 +81,30 @@ export default function FacultyDashboard() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title || !date || !image || !type) {
+    if (!title || !date || !image || !type || !description || !name) { // 🔧 Modified
       alert('Please fill in all required fields.');
       return;
     }
 
     await addDoc(collection(db, 'faculty_achievements'), {
+      name, // 🔧 Added
       email: user.email,
       title,
       date,
       type,
+      description,
       image,
       status: 'pending',
       createdAt: Timestamp.now(),
     });
 
+    // 🔧 Clear name input too
+    setName('');
     setTitle('');
     setDate('');
     setImage('');
     setType('Workshop');
+    setDescription('');
     setSuccessMsg('Achievement submitted successfully! 🎉');
     fetchAchievements();
     setActiveTab('submissions');
@@ -169,15 +181,6 @@ export default function FacultyDashboard() {
           </button>
         </div>
 
-        {successMsg && (
-          <div className="bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-3 rounded-lg mb-6 shadow-md flex items-center">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            {successMsg}
-          </div>
-        )}
-
         {activeTab === 'submit' && (
           <div className="bg-white p-8 rounded-xl shadow-lg border border-gray-100">
             <h2 className="text-2xl font-semibold mb-6 text-gray-800 flex items-center">
@@ -186,9 +189,20 @@ export default function FacultyDashboard() {
               </svg>
               Submit New Achievement
             </h2>
-            
+
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-4">
+                <div>
+                  <label className="block text-gray-700 mb-2 font-medium">Faculty Name</label>
+                  <input
+                    type="text"
+                    placeholder="Enter your name"
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                  />
+                </div>
                 <div>
                   <label className="block text-gray-700 mb-2 font-medium">Title</label>
                   <input
@@ -226,8 +240,20 @@ export default function FacultyDashboard() {
                     required
                   />
                 </div>
+
+                <div>
+                  <label className="block text-gray-700 mb-2 font-medium">Description</label>
+                  <textarea
+                    placeholder="Enter achievement description"
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={4}
+                    required
+                  />
+                </div>
               </div>
-              
+
               <div className="space-y-4">
                 <div>
                   <label className="block text-gray-700 mb-2 font-medium">Upload Evidence</label>
@@ -262,7 +288,7 @@ export default function FacultyDashboard() {
                     </div>
                   )}
                 </div>
-                
+
                 <button
                   type="submit"
                   className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-3 px-4 rounded-lg hover:from-purple-700 hover:to-indigo-700 font-medium shadow-md transition-all mt-4"
@@ -323,14 +349,14 @@ export default function FacultyDashboard() {
               </div>
             </div>
 
-            {/* Table */}
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
+             <div className="overflow-x-auto rounded-lg border border-gray-200">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gradient-to-r from-purple-50 to-indigo-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-purple-800 uppercase tracking-wider">Title</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-purple-800 uppercase tracking-wider">Type</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-purple-800 uppercase tracking-wider">Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-purple-800 uppercase tracking-wider">Description</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-purple-800 uppercase tracking-wider">Status</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-purple-800 uppercase tracking-wider">Evidence</th>
                   </tr>
@@ -341,6 +367,7 @@ export default function FacultyDashboard() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{a.title}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{a.type}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{a.date}</td>
+                      <td className="px-6 py-4 whitespace-pre-wrap text-sm text-gray-500 max-w-xs">{a.description || '-'}</td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
                           ${a.status === 'Approved' ? 'bg-green-100 text-green-800' : 
@@ -350,13 +377,13 @@ export default function FacultyDashboard() {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <img src={a.image} className="h-12 w-12 rounded-md object-cover border" alt="Achievement evidence" />
+                        <img src={a.image} className="h-12 w-12 rounded-md object-cover border" alt="Evidence" />
                       </td>
                     </tr>
                   ))}
                   {filteredAchievements.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="px-6 py-4 text-center text-gray-500">
+                      <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
                         No achievements found matching your filters.
                       </td>
                     </tr>

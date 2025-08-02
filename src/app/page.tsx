@@ -83,7 +83,7 @@ export default function PublicWall() {
 
         const facultyList = facultySnap.docs.map((doc) => ({
           id: doc.id,
-          name: doc.data().facultyName,
+          name: doc.data().name,
           title: doc.data().title,
           type: doc.data().type,
           image: doc.data().image,
