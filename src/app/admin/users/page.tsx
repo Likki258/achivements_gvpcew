@@ -1,221 +1,294 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { db } from "@/utils/firebase";
-import {
-  collection,
-  getDocs,
-  updateDoc,
-  doc,
-  setDoc,
-  serverTimestamp,
-} from "firebase/firestore";
+import { collection, getDocs, deleteDoc, doc, setDoc } from "firebase/firestore";
+import { FiTrash2, FiUserPlus, FiX, FiArrowLeft } from "react-icons/fi";
 import { useRouter } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
 
-interface User {
-  id: string;
+type User = {
   name: string;
   email: string;
-  role: string;
-}
-
-const roleColors = {
-  student: "bg-blue-100 text-blue-800",
-  faculty: "bg-purple-100 text-purple-800",
-  admin: "bg-green-100 text-green-800",
+  role: "Admin" | "Faculty" | "Student";
 };
 
-const roleIcons = {
-  student: (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-    </svg>
-  ),
-  faculty: (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-    </svg>
-  ),
-  admin: (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
-  )
-};
-
-const AdminUsersPage = () => {
+export default function ManageUsers() {
   const [users, setUsers] = useState<User[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [formData, setFormData] = useState<User>({
+    name: "",
+    email: "",
+    role: "Admin",
+  });
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const fetchAllUsers = async () => {
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
     setLoading(true);
-    const combinedUsers: User[] = [];
-
-    const studentSnap = await getDocs(collection(db, "students"));
-    studentSnap.forEach((docSnap) =>
-      combinedUsers.push({ id: docSnap.id, ...docSnap.data(), role: "student" } as User)
-    );
-
-    const facultySnap = await getDocs(collection(db, "faculty"));
-    facultySnap.forEach((docSnap) =>
-      combinedUsers.push({ id: docSnap.id, ...docSnap.data(), role: "faculty" } as User)
-    );
-
-    const adminSnap = await getDocs(collection(db, "admins"));
-    adminSnap.forEach((docSnap) =>
-      combinedUsers.push({ id: docSnap.id, ...docSnap.data(), role: "admin" } as User)
-    );
-
-    setUsers(combinedUsers);
-    setLoading(false);
-  };
-
-  const updateRole = async (user: User, newRole: string) => {
     try {
-      // Remove from all roles
-      await Promise.all([
-        setDoc(doc(db, "students", user.id), {}, { merge: false }),
-        setDoc(doc(db, "faculty", user.id), {}, { merge: false }),
-        setDoc(doc(db, "admins", user.id), {}, { merge: false }),
-      ]).catch(() => {}); // Ignore if document doesn't exist
+      const collections = [
+        { name: "admins", role: "Admin" },
+        { name: "faculty", role: "Faculty" },
+        { name: "students", role: "Student" },
+      ];
 
-      // Add to the new role collection
-      await setDoc(doc(db, newRole + "s", user.id), {
-        name: user.name,
-        email: user.email,
-        lastUpdated: serverTimestamp(),
-      });
-
-      // Log the change
-      await setDoc(doc(collection(db, "audit_logs")), {
-        action: "Role Update",
-        user: user.email,
-        updatedBy: "admin",
-        newRole,
-        timestamp: serverTimestamp(),
-      });
-
-      toast.success(`Role updated to ${newRole}`);
-      fetchAllUsers();
+      let allUsers: User[] = [];
+      for (const col of collections) {
+        const snap = await getDocs(collection(db, col.name));
+        snap.forEach((docSnap) => {
+          const data = docSnap.data();
+          allUsers.push({
+            name: data.name,
+            email: data.email,
+            role: col.role as User["role"],
+          });
+        });
+      }
+      setUsers(allUsers);
     } catch (error) {
-      console.error(error);
-      toast.error("Failed to update role.");
+      console.error("Error fetching users:", error);
+      toast.error("Failed to load users");
+    } finally {
+      setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchAllUsers();
-  }, []);
+  const removeUser = async (email: string, role: string) => {
+    try {
+      let colName =
+        role === "Admin" ? "admins" : role === "Faculty" ? "faculty" : "students";
+      await deleteDoc(doc(db, colName, email));
+      toast.success("User removed successfully");
+      fetchUsers();
+    } catch (error) {
+      console.error("Error removing user:", error);
+      toast.error("Failed to remove user");
+    }
+  };
+
+  const addUser = async () => {
+    if (!formData.name || !formData.email) {
+      toast.error("Please fill all fields");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      let colName =
+        formData.role === "Admin"
+          ? "admins"
+          : formData.role === "Faculty"
+          ? "faculty"
+          : "students";
+      await setDoc(doc(db, colName, formData.email), {
+        name: formData.name,
+        email: formData.email,
+        role: formData.role,
+      });
+      toast.success("User added successfully");
+      setShowForm(false);
+      setFormData({ name: "", email: "", role: "Admin" });
+      fetchUsers();
+    } catch (error) {
+      console.error("Error adding user:", error);
+      toast.error("Failed to add user");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
+    <div className="min-h-screen bg-gray-50">
       {/* Gradient Header Bar with Back Button */}
       <div className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white py-4 px-6 shadow-md">
-        <div className="max-w-7xl mx-auto flex items-center">
+        <div className="max-w-6xl mx-auto flex items-center">
           <button 
             onClick={() => router.back()}
             className="mr-4 p-1 rounded-full hover:bg-purple-700 transition"
           >
-            <svg 
-              xmlns="http://www.w3.org/2000/svg" 
-              className="h-6 w-6" 
-              fill="none" 
-              viewBox="0 0 24 24" 
-              stroke="currentColor"
-            >
-              <path 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
-                strokeWidth={2} 
-                d="M10 19l-7-7m0 0l7-7m-7 7h18" 
-              />
-            </svg>
+            <FiArrowLeft className="h-6 w-6" />
           </button>
-          <h1 className="text-2xl font-bold">Manage Users & Roles</h1>
+          <h1 className="text-2xl font-bold">Manage Users</h1>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-6">
-        <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-6">
-          {loading ? (
-            <div className="flex justify-center items-center h-64">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500"></div>
-            </div>
-          ) : users.length === 0 ? (
-            <div className="bg-gray-50 rounded-lg p-8 text-center">
-              <svg
-                className="w-12 h-12 mx-auto text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+      <div className="p-6 max-w-6xl mx-auto">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-xl font-semibold text-gray-800">User List</h2>
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition"
+          >
+            <FiUserPlus />
+            Add User
+          </button>
+        </div>
+
+        {showForm && (
+          <div className="bg-white rounded-lg shadow p-6 mb-6">
+            <h3 className="text-lg font-medium text-gray-800 mb-4">Add New User</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <input
+                  type="text"
+                  placeholder="Enter name"
+                  className="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  value={formData.name}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
                 />
-              </svg>
-              <p className="mt-4 text-gray-600">No users found</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input
+                  type="email"
+                  placeholder="Enter email"
+                  className="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  value={formData.email}
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                <select
+                  className="w-full border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  value={formData.role}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      role: e.target.value as User["role"],
+                    })
+                  }
+                >
+                  <option value="Admin">Admin</option>
+                  <option value="Faculty">Faculty</option>
+                  <option value="Student">Student</option>
+                </select>
+              </div>
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={addUser}
+                disabled={loading}
+                className="flex items-center justify-center gap-2 bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition min-w-[100px]"
+              >
+                {loading ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Saving...
+                  </>
+                ) : (
+                  'Save'
+                )}
+              </button>
+              <button
+                onClick={() => setShowForm(false)}
+                className="flex items-center gap-1 text-gray-600 hover:text-red-600 transition"
+              >
+                <FiX /> Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Name
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Email
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Role
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {loading && users.length === 0 ? (
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    <td colSpan={4} className="px-6 py-4 text-center">
+                      <div className="flex justify-center">
+                        <svg className="animate-spin h-5 w-5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      </div>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {users.map((user) => (
-                    <tr key={user.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="flex-shrink-0 h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center">
-                            <svg className="h-6 w-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                            </svg>
-                          </div>
-                          <div className="ml-4">
-                            <div className="text-sm font-medium text-gray-900">{user.name}</div>
-                          </div>
-                        </div>
+                ) : users.length > 0 ? (
+                  users.map((user) => (
+                    <tr key={user.email} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {user.name}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.email}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className={`p-2 rounded-full mr-2 ${roleColors[user.role]}`}>
-                            {roleIcons[user.role]}
-                          </div>
-                          <span className="text-sm capitalize">{user.role}</span>
-                        </div>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {user.email}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <select
-                          className="border border-gray-300 rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                          value={user.role}
-                          onChange={(e) => updateRole(user, e.target.value)}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                          user.role === 'Admin' ? 'bg-purple-100 text-purple-800' :
+                          user.role === 'Faculty' ? 'bg-blue-100 text-blue-800' :
+                          'bg-green-100 text-green-800'
+                        }`}>
+                          {user.role}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <button
+                          onClick={() => removeUser(user.email, user.role)}
+                          className="flex items-center gap-1 text-red-600 hover:text-red-800 transition"
                         >
-                          <option value="student">Student</option>
-                          <option value="faculty">Faculty</option>
-                          <option value="admin">Admin</option>
-                        </select>
+                          <FiTrash2 /> Remove
+                        </button>
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-500">
+                      <div className="flex flex-col items-center justify-center py-8">
+                        <svg
+                          className="w-12 h-12 text-gray-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={1.5}
+                            d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
+                        </svg>
+                        <p className="mt-2">No users found</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
       <Toaster position="top-right" />
     </div>
   );
-};
-
-export default AdminUsersPage;
+}
