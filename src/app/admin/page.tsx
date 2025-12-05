@@ -6,6 +6,7 @@ import { signOut } from "firebase/auth";
 import { useRouter, usePathname } from "next/navigation";
 import { doc, getDoc } from "firebase/firestore";
 
+
 export default function AdminDashboard() {
   const [adminData, setAdminData] = useState<any>(null);
   const router = useRouter();
@@ -170,7 +171,14 @@ export default function AdminDashboard() {
             </Link>
           ))}
         </nav>
-        
+        <div className="flex gap-3"></div>
+        <Link href="/" className="mt-4 w-full flex items-center space-x-3 p-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:from-purple-600 hover:to-indigo-700 shadow-md transition-all">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M13 5v6h6" />
+          </svg>
+          <span>Feed</span>
+        </Link>
+
         <button
           onClick={handleLogout}
           className="mt-8 w-full flex items-center justify-center space-x-2 p-3 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"

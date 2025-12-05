@@ -1,20 +1,16 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { db, auth } from '@/utils/firebase';
-import {
-  collection,
-  addDoc,
-  query,
-  where,
-  getDocs,
-  Timestamp,
-} from 'firebase/firestore';
+import {collection, addDoc, query, where, getDocs, Timestamp,} from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
+import Link from "next/link";
+import toast, { Toaster } from "react-hot-toast";
+
 
 interface Achievement {
   id: string;
-  name?: string; // 🔧 Added (optional if you want to display later)
+  name?: string; 
   title: string;
   type: string;
   date: string;
@@ -28,22 +24,22 @@ interface Achievement {
 export default function FacultyDashboard() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
-
-  // 🔧 Added: New name field
   const [name, setName] = useState('');
 
   const [title, setTitle] = useState('');
   const [type, setType] = useState('Workshop');
   const [date, setDate] = useState('');
   const [image, setImage] = useState('');
-  const [description, setDescription] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [description, setDescription] = useState('');
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [activeTab, setActiveTab] = useState<'submit' | 'submissions'>('submit');
 
   const [filterType, setFilterType] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterDate, setFilterDate] = useState('');
+  const [loading, setLoading] = useState(true);
+
 
   useEffect(() => {
     onAuthStateChanged(auth, (user) => {
@@ -60,13 +56,20 @@ export default function FacultyDashboard() {
   }, [user]);
 
   const fetchAchievements = async () => {
-    const q = query(
+    setLoading(true);
+    try{
+      const q = query(
       collection(db, 'faculty_achievements'),
       where('email', '==', user.email)
     );
     const snapshot = await getDocs(q);
     const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as Achievement[];
     setAchievements(data);
+    } catch (error) {
+    console.error('Error fetching achievements:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -82,34 +85,38 @@ export default function FacultyDashboard() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title || !date || !image || !type || !description || !name) { // 🔧 Modified
-      alert('Please fill in all required fields.');
+      toast.error("Please fill in all required fields");
       return;
     }
+    try {
+      await addDoc(collection(db, 'faculty_achievements'), {
+        name, 
+        email: user.email,
+        title,
+        date,
+        type,
+        description,
+        image,
+        status: 'pending',
+        createdAt: Timestamp.now(),
+      });
 
-    await addDoc(collection(db, 'faculty_achievements'), {
-      name, // 🔧 Added
-      email: user.email,
-      title,
-      date,
-      type,
-      description,
-      image,
-      status: 'pending',
-      createdAt: Timestamp.now(),
-    });
+    
+      setName('');
+      setTitle('');
+      setDate('');
+      setImage('');
+      setType('Workshop');
+      setDescription('');
+      toast.success("Achievement submitted successfully! 🎉");
+      fetchAchievements();
+      setActiveTab('submissions');
 
-    // 🔧 Clear name input too
-    setName('');
-    setTitle('');
-    setDate('');
-    setImage('');
-    setType('Workshop');
-    setDescription('');
-    setSuccessMsg('Achievement submitted successfully! 🎉');
-    fetchAchievements();
-    setActiveTab('submissions');
-
-    setTimeout(() => setSuccessMsg(''), 4000);
+      setTimeout(() => setSuccessMsg(''), 4000);
+    } catch (error) {
+      console.error('Error submitting achievement:', error);
+      toast.error("Failed to submit achievement ❌");
+    }
   };
 
   const logout = async () => {
@@ -170,15 +177,26 @@ export default function FacultyDashboard() {
           <div className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-3 rounded-lg shadow-md">
             <h1 className="text-3xl font-bold">Faculty Achievement Portal</h1>
           </div>
+          <div className="flex gap-3">
+
+          <Link href="/" className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:from-purple-600 hover:to-indigo-700 flex items-center shadow-md">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M13 5v6h6" />
+          </svg>
+          Feed
+          </Link>
+
           <button
             onClick={logout}
             className="px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 flex items-center shadow-md"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-            </svg>
-            Logout
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+          Logout
           </button>
+
+        </div>
         </div>
 
         {activeTab === 'submit' && (
@@ -381,19 +399,29 @@ export default function FacultyDashboard() {
                       </td>
                     </tr>
                   ))}
-                  {filteredAchievements.length === 0 && (
+                  {loading ? (
                     <tr>
-                      <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
-                        No achievements found matching your filters.
+                      <td colSpan={7} className="px-6 py-8 text-center">
+                        <div className="flex justify-center">
+                          <div className="animate-spin rounded-full h-10 w-10 border-t-4 border-indigo-600"></div>
+                        </div>
+                        <p className="text-gray-500 mt-3 text-sm">Loading your achievements...</p>
                       </td>
                     </tr>
-                  )}
+                  ) : filteredAchievements.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
+                        No achievements submitted yet.
+                      </td>
+                    </tr>
+                  ) : null}
                 </tbody>
               </table>
             </div>
           </div>
         )}
       </div>
+      <Toaster position="top-right" reverseOrder={false} />
     </div>
   );
 }

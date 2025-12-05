@@ -1,16 +1,12 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { db, auth } from '@/utils/firebase';
-import {
-  collection,
-  addDoc,
-  getDocs,
-  query,
-  where,
-  Timestamp,
-} from 'firebase/firestore';
+import {collection, addDoc, getDocs, query, where, Timestamp,} from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
+import Link from "next/link";
+import toast, { Toaster } from "react-hot-toast";
+
 
 interface Achievement {
   id: string;
@@ -41,6 +37,8 @@ export default function StudentDashboard() {
   const [filterType, setFilterType] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterDate, setFilterDate] = useState('');
+  const [loading, setLoading] = useState(true);
+
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -61,6 +59,7 @@ export default function StudentDashboard() {
 
   const fetchAchievements = async () => {
     if (!user?.email) return;
+    setLoading(true);
     try {
       const q = query(
         collection(db, 'student_achievements'),
@@ -74,6 +73,8 @@ export default function StudentDashboard() {
       setAchievements(data);
     } catch (error) {
       console.error('Error fetching achievements:', error);
+    } finally {
+    setLoading(false);
     }
   };
 
@@ -90,7 +91,7 @@ export default function StudentDashboard() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title || !description || !date || !achievementType || !image || !studentName || !rollNo) {
-      alert('Please fill in all fields.');
+      toast.error("Please fill in all required fields");
       return;
     }
 
@@ -114,13 +115,13 @@ export default function StudentDashboard() {
       setDate('');
       setAchievementType('');
       setImage('');
-      setSuccessMsg('Achievement submitted successfully! 🎉');
+      toast.success("Achievement submitted successfully! 🎉");
       fetchAchievements();
       setActiveTab('submissions');
       setTimeout(() => setSuccessMsg(''), 4000);
     } catch (error) {
       console.error('Error submitting achievement:', error);
-      alert('Failed to submit achievement.');
+      toast.error("Failed to submit achievement ❌");
     }
   };
 
@@ -175,15 +176,24 @@ export default function StudentDashboard() {
           <div className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-3 rounded-lg shadow-md">
             <h1 className="text-3xl font-bold">Student Achievement Portal</h1>
           </div>
+          <div className="flex gap-3">
+
+          <Link href="/" className="px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg hover:from-purple-600 hover:to-indigo-700 flex items-center shadow-md">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M13 5v6h6" />
+          </svg>
+          Feed
+          </Link>
           <button
             onClick={logout}
             className="px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:from-red-600 hover:to-red-700 flex items-center shadow-md"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-            </svg>
-            Logout
-          </button>
+        >
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+        </svg>
+        Logout
+        </button>
+        </div>
         </div>
 
         {successMsg && (
@@ -412,19 +422,29 @@ export default function StudentDashboard() {
                       </td>
                     </tr>
                   ))}
-                  {filteredAchievements.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
-                        No achievements found matching your filters.
-                      </td>
-                    </tr>
-                  )}
+                  {loading ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-8 text-center">
+                      <div className="flex justify-center">
+                        <div className="animate-spin rounded-full h-10 w-10 border-t-4 border-indigo-600"></div>
+                      </div>
+                      <p className="text-gray-500 mt-3 text-sm">Loading your achievements...</p>
+                    </td>
+                  </tr>
+                ) : filteredAchievements.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
+                  No achievements submitted yet.
+                  </td>
+                </tr>
+              ) : null}
                 </tbody>
               </table>
             </div>
           </div>
         )}
       </div>
+      <Toaster position="top-right" reverseOrder={false} />
     </div>
   );
 }

@@ -3,15 +3,15 @@ import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
-// Your Firebase config object here
 const firebaseConfig = {
-  apiKey: "AIzaSyBpve9ZblJNWy5s3iLNiL_KtgqLnD9-Qq4",
-  authDomain: "achievements-27677.firebaseapp.com",
-  projectId: "achievements-27677",
-  storageBucket: "achievements-27677.firebasestorage.app",
-  messagingSenderId: "25194061969",
-  appId: "1:25194061969:web:c5cf57cc1270cbb12f9f30"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
+
 
 
 const app = initializeApp(firebaseConfig);

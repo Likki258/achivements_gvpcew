@@ -4,7 +4,7 @@ import { auth, db } from "@/utils/firebase";
 import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
-import { FiArrowLeft } from "react-icons/fi";
+// Using inline SVG for the back arrow instead of react-icons to avoid dependency on 'react-icons'
 import toast, { Toaster } from "react-hot-toast";
 
 interface AuditLog {
@@ -43,36 +43,44 @@ export default function AuditLogsPage() {
   }, [userEmail, showAll]);
 
   const fetchLogs = async () => {
-    setLoading(true);
-    try {
-      let q;
-      if (showAll) {
-        // Get all logs, ordered by timestamp
-        q = query(
-          collection(db, "audit_logs"),
-          orderBy("timestamp", "desc")
-        );
-      } else {
-        // Only logs created by this admin
-        q = query(
-          collection(db, "audit_logs"),
-          where("updatedBy", "==", userEmail),
-          orderBy("timestamp", "desc")
-        );
-      }
+  setLoading(true);
+  try {
+    let q;
 
-      const snapshot = await getDocs(q);
-      const data: AuditLog[] = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as Omit<AuditLog, "id">),
-      }));
-      setLogs(data);
-    } catch (error) {
-      console.error("Error fetching audit logs:", error);
-      toast.error("Failed to load audit logs");
+    if (showAll) {
+      // get all logs
+      q = collection(db, "audit_logs");
+    } else {
+      // only logs by this admin
+      q = query(
+        collection(db, "audit_logs"),
+        where("updatedBy", "==", userEmail)
+      );
     }
+
+    const snapshot = await getDocs(q);
+
+    let data: AuditLog[] = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...(doc.data() as Omit<AuditLog, "id">),
+    }));
+
+    // Sort manually because Firestore blocked orderBy in filtered query
+    data.sort((a, b) => {
+      const tsA = a.timestamp?.seconds || 0;
+      const tsB = b.timestamp?.seconds || 0;
+      return tsB - tsA; // newest first
+    });
+
+    setLogs(data);
+  } catch (error) {
+    console.error("Error fetching audit logs:", error);
+    toast.error("Failed to load audit logs");
+  } finally {
     setLoading(false);
-  };
+  }
+};
+
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -83,7 +91,9 @@ export default function AuditLogsPage() {
             onClick={() => router.back()}
             className="mr-4 p-1 rounded-full hover:bg-purple-700 transition"
           >
-            <FiArrowLeft className="h-6 w-6" />
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
           </button>
           <h1 className="text-2xl font-bold">Audit Logs</h1>
         </div>
@@ -96,8 +106,10 @@ export default function AuditLogsPage() {
               {showAll ? "All Audit Logs" : "My Audit Logs"}
             </h2>
             <button
+              disabled={loading}
               onClick={() => setShowAll((prev) => !prev)}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition flex items-center gap-2"
+              className={`px-4 py-2 rounded-md flex items-center gap-2 
+                ${loading ? "bg-gray-300 text-gray-500 cursor-not-allowed" : "bg-indigo-600 text-white hover:bg-indigo-700"}`}
             >
               {showAll ? (
                 <>
