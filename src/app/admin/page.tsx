@@ -4,11 +4,12 @@ import { useEffect, useState } from "react";
 import { auth, db } from "@/utils/firebase";
 import { signOut } from "firebase/auth";
 import { useRouter, usePathname } from "next/navigation";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 
 
 export default function AdminDashboard() {
   const [adminData, setAdminData] = useState<any>(null);
+  const [pendingCount, setPendingCount] = useState(0);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -28,6 +29,38 @@ export default function AdminDashboard() {
     fetchAdminInfo();
   }, []);
 
+  // Fetch pending achievements count
+  useEffect(() => {
+    const fetchPendingCount = async () => {
+      try {
+        const studentQuery = query(
+          collection(db, "student_achievements"),
+          where("status", "==", "pending")
+        );
+        const facultyQuery = query(
+          collection(db, "faculty_achievements"),
+          where("status", "==", "pending")
+        );
+
+        const [studentSnap, facultySnap] = await Promise.all([
+          getDocs(studentQuery),
+          getDocs(facultyQuery),
+        ]);
+
+        const total = studentSnap.size + facultySnap.size;
+        setPendingCount(total);
+      } catch (error) {
+        console.error("Error fetching pending count:", error);
+      }
+    };
+
+    fetchPendingCount();
+    
+    // Refresh count every 30 seconds
+    const interval = setInterval(fetchPendingCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   const handleLogout = async () => {
     await signOut(auth);
     router.push("/");
@@ -41,7 +74,8 @@ export default function AdminDashboard() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
         </svg>
       ),
-      label: "Dashboard"
+      label: "Dashboard",
+      showBadge: false
     },
     {
       href: "/admin/verify",
@@ -50,7 +84,8 @@ export default function AdminDashboard() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       ),
-      label: "Approve Achievements"
+      label: "Approve Achievements",
+      showBadge: true
     },
     {
       href: "/admin/users",
@@ -59,7 +94,8 @@ export default function AdminDashboard() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
         </svg>
       ),
-      label: "Manage Users"
+      label: "Manage Users",
+      showBadge: false
     },
     {
       href: "/admin/college",
@@ -68,7 +104,8 @@ export default function AdminDashboard() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
         </svg>
       ),
-      label: "College Achievements"
+      label: "College Achievements",
+      showBadge: false
     },
     {
       href: "/admin/export",
@@ -77,7 +114,8 @@ export default function AdminDashboard() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
         </svg>
       ),
-      label: "Export to PDF"
+      label: "Export to PDF",
+      showBadge: false
     },
     {
       href: "/admin/audit",
@@ -86,7 +124,8 @@ export default function AdminDashboard() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
       ),
-      label: "Audit Logs"
+      label: "Audit Logs",
+      showBadge: false
     }
   ];
 
@@ -99,7 +138,8 @@ export default function AdminDashboard() {
         </svg>
       ),
       title: "Approve Achievements",
-      description: "Review and approve student achievement submissions"
+      description: "Review and approve student achievement submissions",
+      showBadge: true
     },
     {
       href: "/admin/users",
@@ -109,7 +149,8 @@ export default function AdminDashboard() {
         </svg>
       ),
       title: "Manage Users",
-      description: "View and manage all user accounts"
+      description: "View and manage all user accounts",
+      showBadge: false
     },
     {
       href: "/admin/college",
@@ -119,7 +160,8 @@ export default function AdminDashboard() {
         </svg>
       ),
       title: "College Achievements",
-      description: "Add and manage college-level achievements"
+      description: "Add and manage college-level achievements",
+      showBadge: false
     },
     {
       href: "/admin/export",
@@ -129,7 +171,8 @@ export default function AdminDashboard() {
         </svg>
       ),
       title: "Export to PDF",
-      description: "Generate PDF reports of achievements"
+      description: "Generate PDF reports of achievements",
+      showBadge: false
     },
     {
       href: "/admin/audit",
@@ -139,7 +182,8 @@ export default function AdminDashboard() {
         </svg>
       ),
       title: "Audit Logs",
-      description: "View system activity and changes"
+      description: "View system activity and changes",
+      showBadge: false
     }
   ];
 
@@ -164,10 +208,18 @@ export default function AdminDashboard() {
             <Link 
               key={item.href}
               href={item.href}
-              className={`flex items-center space-x-3 p-3 rounded-lg transition-all ${pathname === item.href ? 'bg-white text-purple-800 font-medium' : 'text-white hover:bg-purple-600'}`}
+              className={`flex items-center justify-between p-3 rounded-lg transition-all ${pathname === item.href ? 'bg-white text-purple-800 font-medium' : 'text-white hover:bg-purple-600'}`}
             >
-              {item.icon}
-              <span>{item.label}</span>
+              <div className="flex items-center space-x-3">
+                {item.icon}
+                <span>{item.label}</span>
+              </div>
+              {item.showBadge && pendingCount > 0 && (
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                </span>
+              )}
             </Link>
           ))}
         </nav>
@@ -204,8 +256,18 @@ export default function AdminDashboard() {
               <Link
                 key={card.href}
                 href={card.href}
-                className="bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-100 p-6 rounded-xl hover:shadow-md transition-shadow"
+                className="relative bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-100 p-6 rounded-xl hover:shadow-md transition-shadow"
               >
+                {/* Red notification badge */}
+                {card.showBadge && pendingCount > 0 && (
+                  <div className="absolute -top-2 -right-2">
+                    <span className="relative flex h-5 w-5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-5 w-5 bg-red-500 shadow-lg"></span>
+                    </span>
+                  </div>
+                )}
+                
                 <div className="flex items-center mb-4">
                   <div className="bg-purple-100 text-purple-600 p-3 rounded-full mr-4">
                     {card.icon}
@@ -213,6 +275,15 @@ export default function AdminDashboard() {
                   <h3 className="text-lg font-semibold text-gray-800">{card.title}</h3>
                 </div>
                 <p className="text-sm text-gray-600">{card.description}</p>
+                
+                {/* Show count badge on card */}
+                {card.showBadge && pendingCount > 0 && (
+                  <div className="mt-4 pt-4 border-t border-purple-200">
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700">
+                      {pendingCount} pending approval{pendingCount !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                )}
               </Link>
             ))}
           </div>

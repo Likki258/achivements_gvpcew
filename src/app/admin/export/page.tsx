@@ -1,16 +1,19 @@
 "use client";
+
 import React, { useEffect, useState } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/utils/firebase";
 import jsPDF from "jspdf";
-import html2canvas from "html2canvas";
 import { useRouter } from "next/navigation";
 import toast, { Toaster } from "react-hot-toast";
+import * as XLSX from "xlsx";
+import { saveAs } from "file-saver";
 
 type Achievement = {
   id: string;
   name?: string;
   studentName?: string;
+  facultyName?: string;
   department?: string;
   rollNo?: string;
   title: string;
@@ -21,6 +24,7 @@ type Achievement = {
   status: string;
   image?: string;
   submittedAt?: any;
+  submittedBy?: "student" | "faculty";
 };
 
 export default function ExportAchievements() {
@@ -37,17 +41,41 @@ export default function ExportAchievements() {
   const fetchApprovedAchievements = async () => {
     try {
       setLoading(true);
-      const q = query(
-        collection(db, "student_achievements"), 
+
+      const qStudent = query(
+        collection(db, "student_achievements"),
         where("status", "==", "approved")
       );
-      const snapshot = await getDocs(q);
-      const data: Achievement[] = snapshot.docs.map((doc) => ({
+      const snapStudent = await getDocs(qStudent);
+
+      const studentData: Achievement[] = snapStudent.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
+        submittedBy: "student",
       })) as Achievement[];
-      setAchievements(data);
-      setFiltered(data);
+
+      const qFaculty = query(
+        collection(db, "faculty_achievements"),
+        where("status", "==", "approved")
+      );
+      const snapFaculty = await getDocs(qFaculty);
+
+      const facultyData: Achievement[] = snapFaculty.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        submittedBy: "faculty",
+      })) as Achievement[];
+
+      let merged = [...studentData, ...facultyData];
+
+      merged.sort((a, b) => {
+        const da = new Date(a.date || 0).getTime();
+        const db = new Date(b.date || 0).getTime();
+        return db - da;
+      });
+
+      setAchievements(merged);
+      setFiltered(merged);
     } catch (error) {
       console.error("Error fetching achievements:", error);
       toast.error("Failed to load achievements");
@@ -65,95 +93,234 @@ export default function ExportAchievements() {
     setFiltered(filteredData);
   };
 
+  const loadImage = (url: string): Promise<HTMLImageElement> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = url;
+    });
+  };
+
+  const getAcademicYear = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      const month = date.getMonth(); // 0-11 (0=Jan, 11=Dec)
+      const year = date.getFullYear();
+      
+      // Academic year: June to April
+      // If month is 0-4 (Jan-May), academic year is (year-1) to year
+      // If month is 5-11 (Jun-Dec), academic year is year to (year+1)
+      if (month >= 0 && month <= 4) {
+        return `${year - 1}-${year}`;
+      } else {
+        return `${year}-${year + 1}`;
+      }
+    } catch (error) {
+      return "N/A";
+    }
+  };
+
+  const exportToExcel = () => {
+  try {
+    toast.loading("Generating Excel...", { id: "excel-gen" });
+
+    // Prepare worksheet data
+    const rows = filtered.map((ach) => ({
+      Name: ach.name || ach.studentName || ach.facultyName || "N/A",
+      RollNo: ach.submittedBy === "student" ? (ach.rollNo || "") : "",
+      AchievementType: ach.type || ach.achievementType || "N/A",
+      Title: ach.title || "",
+      Description: ach.description || "",
+      AcademicYear: getAcademicYear(ach.date),
+      CertificateIssuedDate: ach.date || "",
+      SubmittedBy: ach.submittedBy || "",
+    }));
+
+    // Create worksheet
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+
+    // Auto column width
+    const colWidths = Object.keys(rows[0] || {}).map((key) => ({
+      wch: Math.max(
+        key.length,
+        ...rows.map(row => (row[key] ? row[key].toString().length : 0))
+      ) + 2
+    }));
+
+    worksheet["!cols"] = colWidths;
+
+    // Create workbook
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Achievements");
+
+    // Export file
+    const excelBuffer = XLSX.write(workbook, {
+      type: "array",
+      bookType: "xlsx",
+    });
+
+    const blob = new Blob([excelBuffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+
+    saveAs(blob, `GVPCEW_Achievements_${new Date().toISOString().split("T")[0]}.xlsx`);
+
+    toast.success("Excel exported successfully!", { id: "excel-gen" });
+
+  } catch (error) {
+    console.error("Excel export error:", error);
+    toast.error("Failed to export Excel", { id: "excel-gen" });
+  }};
+
   const exportToPDF = async () => {
     try {
       toast.loading("Generating PDF...", { id: "pdf-gen" });
-      
+
       const pdf = new jsPDF("p", "mm", "a4");
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
-      const margin = 15;
-      
-      // Header
-      pdf.setFillColor(79, 70, 229); // Indigo
-      pdf.rect(0, 0, pageWidth, 35, "F");
-      
-      pdf.setTextColor(255, 255, 255);
-      pdf.setFontSize(20);
-      pdf.setFont("helvetica", "bold");
-      pdf.text("GVPCEW Achievement Report", margin, 15);
-      
-      pdf.setFontSize(10);
-      pdf.setFont("helvetica", "normal");
-      pdf.text(`Generated on: ${new Date().toLocaleString()}`, margin, 25);
-      pdf.text(`Total Achievements: ${filtered.length}`, margin, 30);
-      
-      let yPosition = 45;
-      
+      const margin = 20;
+
       for (let i = 0; i < filtered.length; i++) {
         const ach = filtered[i];
-        
-        // Check if we need a new page
-        if (yPosition > pageHeight - 60) {
+
+        if (i > 0) {
           pdf.addPage();
-          yPosition = 20;
         }
+
+        // Card border
+        pdf.setDrawColor(203, 213, 225);
+        pdf.setLineWidth(1);
+        pdf.roundedRect(margin, margin, pageWidth - 2 * margin, pageHeight - 2 * margin, 5, 5, "S");
+
+        // Title section with gradient-like effect
+        pdf.setFillColor(79, 70, 229);
+        pdf.roundedRect(margin + 5, margin + 5, pageWidth - 2 * margin - 10, 20, 3, 3, "F");
         
-        // Card background
-        pdf.setFillColor(249, 250, 251);
-        pdf.roundedRect(margin, yPosition, pageWidth - 2 * margin, 50, 3, 3, "F");
-        
-        // Border
-        pdf.setDrawColor(209, 213, 219);
-        pdf.setLineWidth(0.5);
-        pdf.roundedRect(margin, yPosition, pageWidth - 2 * margin, 50, 3, 3, "S");
-        
-        // Content
-        pdf.setTextColor(0, 0, 0);
-        pdf.setFontSize(12);
+        pdf.setTextColor(255, 255, 255);
+        pdf.setFontSize(16);
         pdf.setFont("helvetica", "bold");
-        pdf.text(ach.title, margin + 5, yPosition + 8);
+        const titleText = pdf.splitTextToSize(ach.title, pageWidth - 2 * margin - 20);
+        pdf.text(titleText[0], pageWidth / 2, margin + 16, { align: "center" });
+
+        let yPos = margin + 35;
+
+        // Image section - Bigger
+        if (ach.image) {
+          try {
+            const img = await loadImage(ach.image);
+            const imgWidth = 150;
+            const imgHeight = 120;
+            const xPos = (pageWidth - imgWidth) / 2;
+
+            // Image border
+            pdf.setFillColor(248, 250, 252);
+            pdf.roundedRect(xPos - 2, yPos - 2, imgWidth + 4, imgHeight + 4, 3, 3, "F");
+            
+            pdf.addImage(img, "JPEG", xPos, yPos, imgWidth, imgHeight);
+            
+            // Image border outline
+            pdf.setDrawColor(203, 213, 225);
+            pdf.setLineWidth(0.5);
+            pdf.roundedRect(xPos, yPos, imgWidth, imgHeight, 3, 3, "S");
+            
+            yPos += imgHeight + 15;
+          } catch (error) {
+            console.error("Error loading image:", error);
+            pdf.setFillColor(241, 245, 249);
+            pdf.roundedRect((pageWidth - 150) / 2, yPos, 150, 120, 3, 3, "F");
+            pdf.setTextColor(148, 163, 184);
+            pdf.setFontSize(10);
+            pdf.text("Image not available", pageWidth / 2, yPos + 60, { align: "center" });
+            yPos += 135;
+          }
+        } else {
+          pdf.setFillColor(241, 245, 249);
+          pdf.roundedRect((pageWidth - 150) / 2, yPos, 150, 120, 3, 3, "F");
+          pdf.setTextColor(148, 163, 184);
+          pdf.setFontSize(10);
+          pdf.text("No image uploaded", pageWidth / 2, yPos + 60, { align: "center" });
+          yPos += 135;
+        }
+
+        // Information section - Two rows
+        pdf.setFillColor(248, 250, 252);
+        pdf.roundedRect(margin + 10, yPos, pageWidth - 2 * margin - 20, 30, 3, 3, "F");
+
+        yPos += 12;
+        pdf.setTextColor(51, 65, 85);
+        pdf.setFontSize(11);
+
+        const centerX = pageWidth / 2;
+        const name = ach.name || ach.studentName || ach.facultyName || "N/A";
+        const rollNo = ach.rollNo || "N/A";
+        const academicYear = getAcademicYear(ach.date);
         
-        pdf.setFontSize(9);
+        // First row: Name: [name] | Roll No: [rollNo]
+        pdf.setFont("helvetica", "bold");
+        const firstRow = `Name: `;
+        pdf.text(firstRow, centerX - 40, yPos);
         pdf.setFont("helvetica", "normal");
-        pdf.setTextColor(75, 85, 99);
+        pdf.text(name, centerX - 40 + pdf.getTextWidth(firstRow), yPos);
         
-        const studentName = ach.name || ach.studentName || "N/A";
-        pdf.text(`Student: ${studentName}`, margin + 5, yPosition + 16);
+        pdf.setFont("helvetica", "bold");
+        const rollLabel = ` | Roll No: `;
+        const nameWidth = pdf.getTextWidth(firstRow + name);
+        pdf.text(rollLabel, centerX - 40 + nameWidth, yPos);
+        pdf.setFont("helvetica", "normal");
+        pdf.text(rollNo, centerX - 40 + nameWidth + pdf.getTextWidth(rollLabel), yPos);
+
+        // Second row: Year: [academicYear] (centered)
+        yPos += 10;
+        pdf.setFont("helvetica", "bold");
+        const yearLabel = "Year: ";
+        const yearLabelWidth = pdf.getTextWidth(yearLabel);
+        pdf.setFont("helvetica", "normal");
+        const yearValueWidth = pdf.getTextWidth(academicYear);
+        const totalWidth = yearLabelWidth + yearValueWidth;
         
-        if (ach.rollNo) {
-          pdf.text(`Roll No: ${ach.rollNo}`, margin + 5, yPosition + 22);
-        }
-        
-        if (ach.department) {
-          pdf.text(`Department: ${ach.department}`, margin + 5, yPosition + 28);
-        }
-        
-        const achievementType = ach.type || ach.achievementType || "N/A";
-        pdf.text(`Type: ${achievementType}`, margin + 5, yPosition + 34);
-        
-        pdf.text(`Date: ${ach.date}`, margin + 5, yPosition + 40);
-        
+        pdf.setFont("helvetica", "bold");
+        pdf.text(yearLabel, centerX - totalWidth / 2, yPos);
+        pdf.setFont("helvetica", "normal");
+        pdf.text(academicYear, centerX - totalWidth / 2 + yearLabelWidth, yPos);
+
+        // Description section
         if (ach.description) {
-          pdf.setFontSize(8);
-          const descLines = pdf.splitTextToSize(ach.description, pageWidth - 2 * margin - 10);
-          pdf.text(descLines.slice(0, 1), margin + 5, yPosition + 46);
+          yPos += 20;
+          pdf.setFont("helvetica", "bold");
+          pdf.setFontSize(11);
+          pdf.text("Description:", margin + 20, yPos);
+          pdf.setFont("helvetica", "normal");
+          pdf.setFontSize(10);
+          const descLines = pdf.splitTextToSize(ach.description, pageWidth - 2 * margin - 40);
+          pdf.text(descLines.slice(0, 5), margin + 20, yPos + 6);
         }
-        
-        yPosition += 55;
+
+        // Status badge - Smaller
+        pdf.setFillColor(16, 185, 129);
+        pdf.roundedRect(pageWidth - margin - 28, pageHeight - margin - 12, 24, 6, 2, 2, "F");
+        pdf.setTextColor(255, 255, 255);
+        pdf.setFontSize(7);
+        pdf.setFont("helvetica", "bold");
+        pdf.text("APPROVED", pageWidth - margin - 16, pageHeight - margin - 8, { align: "center" });
+
+        // Footer
+        pdf.setTextColor(148, 163, 184);
+        pdf.setFontSize(8);
+        pdf.setFont("helvetica", "normal");
+        pdf.text(
+          `Page ${i + 1} of ${filtered.length}`,
+          pageWidth / 2,
+          pageHeight - margin + 5,
+          { align: "center" }
+        );
       }
-      
-      // Footer on last page
-      pdf.setFontSize(8);
-      pdf.setTextColor(107, 114, 128);
-      pdf.text(
-        "This is an auto-generated report from GVPCEW Achievements Portal",
-        pageWidth / 2,
-        pageHeight - 10,
-        { align: "center" }
+
+      pdf.save(
+        `GVPCEW_Achievements_Report_${new Date().toISOString().split("T")[0]}.pdf`
       );
-      
-      pdf.save(`GVPCEW_Achievements_Report_${new Date().toISOString().split('T')[0]}.pdf`);
       toast.success("PDF exported successfully", { id: "pdf-gen" });
     } catch (error) {
       console.error("Error generating PDF:", error);
@@ -175,26 +342,28 @@ export default function ExportAchievements() {
       {/* Header */}
       <div className="relative bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white shadow-xl">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center">
-          <button 
+          <button
             onClick={() => router.back()}
             className="mr-4 p-2 rounded-lg hover:bg-white/10 transition"
           >
-            <svg 
-              xmlns="http://www.w3.org/2000/svg" 
-              className="h-6 w-6" 
-              fill="none" 
-              viewBox="0 0 24 24" 
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-6 w-6"
+              fill="none"
+              viewBox="0 0 24 24"
               stroke="currentColor"
             >
-              <path 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
-                strokeWidth={2} 
-                d="M10 19l-7-7m0 0l7-7m-7 7h18" 
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M10 19l-7-7m0 0l7-7m-7 7h18"
               />
             </svg>
           </button>
-          <h1 className="text-2xl font-bold tracking-tight">Export Achievements Report</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Export Achievements Report
+          </h1>
         </div>
       </div>
 
@@ -203,11 +372,10 @@ export default function ExportAchievements() {
         <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-6 mb-6">
           <div className="flex flex-col md:flex-row items-end gap-4">
             <div className="flex-1">
-              <label htmlFor="date-filter" className="block text-sm font-semibold text-slate-700 mb-2">
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
                 Filter by Date
               </label>
               <input
-                id="date-filter"
                 type="date"
                 className="w-full border border-slate-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50"
                 value={filterDate}
@@ -232,13 +400,22 @@ export default function ExportAchievements() {
               </svg>
               Export PDF
             </button>
+            <button
+              onClick={exportToExcel}
+              className="px-6 py-3 bg-gradient-to-r from-yellow-500 to-amber-600 text-white rounded-lg hover:from-yellow-600 hover:to-amber-700 transition-all shadow-md flex items-center justify-center font-semibold"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-6m6 6V7m-2 10H7a2 2 0 01-2-2V7a2 2 0 012-2h5m4 4h2a2 2 0 012 2v6a2 2 0 01-2 2h-2" />
+              </svg>
+              Export Excel
+            </button>
           </div>
-          
+   
           <div className="mt-4 flex items-center text-sm text-slate-600">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span>Showing <strong>{filtered.length}</strong> approved achievement{filtered.length !== 1 ? 's' : ''}</span>
+            <span>Showing <strong>{filtered.length}</strong> approved achievement{filtered.length !== 1 ? 's' : ''} • One achievement per PDF page with image</span>
           </div>
         </div>
 
@@ -304,7 +481,7 @@ export default function ExportAchievements() {
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                       </svg>
-                      <span className="font-medium">{ach.name || ach.studentName || "N/A"}</span>
+                      <span className="font-medium">{ach.name || ach.studentName || ach.facultyName || "N/A"}</span>
                     </div>
                     
                     {ach.rollNo && (
@@ -313,15 +490,6 @@ export default function ExportAchievements() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
                         </svg>
                         <span>{ach.rollNo}</span>
-                      </div>
-                    )}
-                    
-                    {ach.department && (
-                      <div className="flex items-center text-sm text-slate-700">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                        </svg>
-                        <span>{ach.department}</span>
                       </div>
                     )}
                     
@@ -346,7 +514,7 @@ export default function ExportAchievements() {
                         <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                         </svg>
-                        Approved
+                        {ach.submittedBy || "Approved"}
                       </span>
                       {ach.submittedAt && (
                         <span className="text-xs text-slate-500">

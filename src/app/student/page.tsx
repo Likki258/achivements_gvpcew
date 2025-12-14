@@ -43,11 +43,9 @@ export default function StudentDashboard() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
-        setUser(user);
-        setStudentName(user.displayName || '');
+        verifyStudentAccess(user);
       } else {
-        setUser(null);
-        router.push('/');
+         router.push('/');
       }
     });
     return () => unsubscribe();
@@ -56,6 +54,31 @@ export default function StudentDashboard() {
   useEffect(() => {
     if (user?.email) fetchAchievements();
   }, [user]);
+
+  const verifyStudentAccess = async (user: any) => {
+  const email = user.email;
+
+  const q = query(
+    collection(db, "students"),
+    where("__name__", "==", email)
+  );
+
+  const snap = await getDocs(q);
+
+  // If not found
+  if (snap.empty) {
+    toast.error("Unauthorized access");
+    await signOut(auth);
+    localStorage.removeItem("role");
+    router.push("/");
+    return;
+  }
+
+  // If found → allow
+  setUser(user);
+  setStudentName(user.displayName || "");
+};
+
 
   const fetchAchievements = async () => {
     if (!user?.email) return;

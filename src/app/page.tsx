@@ -33,14 +33,33 @@ export default function PublicWall() {
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+
 
   const [user, setUser] = useState<any>(null);
 
   // Detect active session
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-    });
+    const unsub = onAuthStateChanged(auth, async (u) => {
+  if (!u) {
+    setUser(null);
+    setAuthLoading(false);
+    return;
+  }
+
+  // Check if role exists in localStorage (fast)
+  const role = localStorage.getItem("role");
+
+  if (!role) {
+    // treat as unauthorized until verified
+    setUser(null);
+    setAuthLoading(false);
+    return;
+  }
+
+  setUser(u);
+  setAuthLoading(false);
+});
     return () => unsub();
   }, []);
 
@@ -69,6 +88,9 @@ export default function PublicWall() {
       }
 
       toast.error("Access Denied: Email not found in system.");
+      await auth.signOut();        // <-- KILL FIREBASE SESSION
+      localStorage.removeItem("role");
+      return;
     } catch (err) {
       console.error("Login error:", err);
       toast.error("Login failed");
@@ -80,7 +102,8 @@ export default function PublicWall() {
     const role = localStorage.getItem("role");
     if (role === "admin") return router.push("/admin");
     if (role === "faculty") return router.push("/faculty");
-    return router.push("/student");
+    if (role==="student") return router.push("/student");
+    return router.push("/")
   };
 
   // FETCH DATA
@@ -178,7 +201,14 @@ export default function PublicWall() {
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold tracking-tight">GVPCEW Achievements Portal</h1>
 
-          {user ? (
+          {authLoading ? (
+            <button
+              disabled
+              className="px-5 py-2 bg-white text-blue-600 rounded-lg hover:bg-blue-50 font-semibold shadow-lg transition-all duration-200 hover:shadow-xl"
+            >
+              Loading...
+            </button>
+          ) : user ? (
             <button
               onClick={goToProfile}
               className="px-5 py-2 bg-white text-blue-600 rounded-lg hover:bg-blue-50 font-semibold shadow-lg transition-all duration-200 hover:shadow-xl"
@@ -358,16 +388,39 @@ export default function PublicWall() {
       {/* IMAGE MODAL */}
       {selectedImage && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
+          className="fixed inset-0 backdrop-blur-sm bg-black bg-opacity-60 flex items-center justify-center z-50"
           onClick={() => setSelectedImage(null)}
         >
-          <img
-            src={selectedImage}
-            alt="Enlarged"
-            className="max-h-[90%] max-w-[90%] rounded-lg"
-          />
-        </div>
-      )}
+
+        {/* Close button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation(); // prevent closing by modal click
+            setSelectedImage(null);
+          }}
+          className="absolute top-6 right-6 bg-white text-black rounded-full p-2 shadow-lg hover:bg-gray-200 transition"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg"
+            className="h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+
+        {/* Image */}
+        <img
+          src={selectedImage}
+          alt="Enlarged"
+          className="max-h-[90%] max-w-[90%] rounded-lg shadow-xl"
+          onClick={(e) => e.stopPropagation()} // keep click from closing
+        />
+      </div>
+    )}
+
       <Toaster position="top-right" reverseOrder={false} />
     </div>
   );
