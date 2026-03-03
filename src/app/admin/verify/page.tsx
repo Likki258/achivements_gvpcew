@@ -10,13 +10,40 @@ import {
   where,
 } from "firebase/firestore";
 import toast, { Toaster } from "react-hot-toast";
+import { auth } from "@/utils/firebase"; 
 import { useRouter } from "next/navigation";
+import { logAuditAction } from "@/utils/auditLogger";
+import { canApproveAchievements } from "@/utils/permissionChecker";
 
 export default function VerifyAchievements() {
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [hasPermission, setHasPermission] = useState(false);
   const router = useRouter();
+
+  // NEW: Check permissions on mount
+  useEffect(() => {
+    const checkPermission = async () => {
+      const user = auth.currentUser;
+      if (!user?.email) {
+        toast.error("Please login first");
+        router.push("/login");
+        return;
+      }
+
+      const canApprove = await canApproveAchievements(user.email);
+      if (!canApprove) {
+        toast.error("You don't have permission to approve achievements");
+        router.push("/");
+        return;
+      }
+
+      setHasPermission(true);
+    };
+
+    checkPermission();
+  }, [router]);
 
   const fetchData = async () => {
     try {
@@ -63,14 +90,33 @@ export default function VerifyAchievements() {
     try {
       const collectionName =
         item.role === "student" ? "student_achievements" : "faculty_achievements";
+    
+      // Update the achievement status
       await updateDoc(doc(db, collectionName, item.id), { status });
-      toast.success(`Achievement ${status}`);
+    
+      // 📝 LOG THE AUDIT ACTION
+      const userName = item.name || item.studentName || item.facultyName || "Unknown";
+      const action = status === "approved" ? "achievement_approved" : "achievement_rejected";
+      await logAuditAction(action, `${userName} - ${item.title}`);
+    
+      toast.success(`Achievement ${status}!`);
       fetchData();
     } catch (error) {
       console.error("Error updating achievement:", error);
       toast.error("Failed to update achievement");
     }
   };
+
+  if (!hasPermission) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-slate-600 text-lg font-medium">Checking permissions...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 relative">

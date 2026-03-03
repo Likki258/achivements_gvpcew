@@ -6,6 +6,7 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import Link from "next/link";
 import toast, { Toaster } from "react-hot-toast";
+import { isReviewer } from "@/utils/permissionChecker";
 
 
 interface Achievement {
@@ -34,6 +35,7 @@ export default function FacultyDashboard() {
   const [description, setDescription] = useState('');
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [activeTab, setActiveTab] = useState<'submit' | 'submissions'>('submit');
+  const [canReview, setCanReview] = useState(false);
 
   const [filterType, setFilterType] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -50,6 +52,19 @@ export default function FacultyDashboard() {
       }
     });
   }, []);
+
+  useEffect(() => {
+    const checkReviewerStatus = async () => {
+      if (user?.email) {
+        const reviewerStatus = await isReviewer(user.email);
+        setCanReview(reviewerStatus);
+      }
+    };
+  
+    if (user) {
+      checkReviewerStatus();
+    }
+  }, [user]);
 
   useEffect(() => {
     if (user) fetchAchievements();
@@ -168,6 +183,21 @@ export default function FacultyDashboard() {
             </svg>
             <span>My Submissions</span>
           </button>
+          
+          {canReview && (
+            <Link href="/admin/verify"
+              className="w-full flex items-center space-x-3 p-3 rounded-lg mb-2 transition-all text-white hover:bg-purple-600 bg-amber-600 hover:bg-amber-700">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg> 
+                  <span className="flex items-center gap-2">
+                    Approve Achievements
+                  <span className="px-1.5 py-0.5 bg-white text-amber-600 rounded-full text-xs font-bold">
+                  ⭐
+                </span>
+              </span>
+            </Link>
+          )}  
         </nav>
       </div>
 
